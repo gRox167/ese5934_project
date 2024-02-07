@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "ese5934-project"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+torch = "^2.2.0"
+scipy = "^1.12.0"
+numpy = "^1.26.4"
+einops = "^0.7.0"
+tqdm = "^4.66.1"
+h5py = "^3.10.0"
+lightning = "^2.1.4"
+torchopt = "^0.7.3"
+jupyterlab = "^4.1.0"
+pytorch-minimize = "^0.0.2"
+fastmri = "^0.3.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
