@@ -1,6 +1,6 @@
 # ese5934_project
-Too install all the dependency, We recommend using `poetry` as dependency manager.
-
+Too install all the dependency, we recommend using `poetry` as dependency manager.
+### Peotry Installation
 Run following code to install `poetry`
 ```bash
 curl -sSL https://install.python-poetry.org | python3 -
@@ -9,7 +9,7 @@ then add `$HOME/.local/bin` to your PATH (example code is given for bash, you ma
 ```bash
 echo 'export PATH=$PATH:$HOME/.local/bin' >> ~/.bashrc
 ```
-and then try 
+and then open a new shell and try 
 ```bash
 poetry --version
 
@@ -21,3 +21,11 @@ Then just run in this repo's folder
 poetry install
 ```
 it will automatically install all the dependency.
+
+### Poetry Add Dependency
+For example if you want to add `nibabel` to the denpendency just run
+```bash
+poetry add nibabel
+```
+### Poetry Detailed
+For more information please refer to https://python-poetry.org/docs/
