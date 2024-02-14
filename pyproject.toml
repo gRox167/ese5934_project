@@ -8,7 +8,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-torch = {version = "2.2.0", source = "pytorch-cpu"}
+torch = "^2.11"
 scipy = "^1.12.0"
 numpy = "^1.26.4"
 einops = "^0.7.0"
