@@ -19,7 +19,7 @@ from functools import partial
 import time
 import threading
 import os.path
-
+ 
 class DiscreteSlider(Slider):
     """A matplotlib slider widget with discrete steps."""
     def __init__(self, *args, **kwargs):
