@@ -24,6 +24,7 @@ def reconstruct(
     iterations=500,
     device=torch.device("cpu"),
     params_init=None,
+    kspace_normalization=False,
 ):
     field.to(device)
     coordinates = coordinates.to(device)
@@ -41,10 +42,11 @@ def reconstruct(
         kspace_masked,
         csm,
         mask,
+        kspace_normalization=False,
     ):
         image = functional_call(field, params, (coordinates,))
         kspace_hat = masked_forward_model(image, csm, mask)
-        loss = complex_abs_sq(kspace_hat - kspace_masked).sum()
+        loss = complex_abs_sq(kspace_hat - kspace_masked).mean()
         return loss, (loss, image, kspace_hat)
 
     image_show_list = []
@@ -59,7 +61,7 @@ def reconstruct(
         )
         loss, image, kspace_hat = aux
         print(f"iteration {t}, loss: {loss.item()}")
-        updates, opt_state = optimizer.update(grads, opt_state)
+        updates, opt_state = optimizer.update(grads, opt_state, params=params)
         params = torchopt.apply_updates(params, updates)
         params = {k: v.detach() for k, v in params.items()}  # detach params
         # check for results

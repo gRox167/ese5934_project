@@ -65,6 +65,8 @@ class Siren(nn.Module):
     def __init__(
         self,
         size,
+        mean,
+        std,
         in_features,
         hidden_features,
         hidden_layers,
@@ -74,6 +76,8 @@ class Siren(nn.Module):
         hidden_omega_0=30.0,
     ):
         super().__init__()
+        self.mean = mean
+        self.std = std
 
         self.net = []
         self.net.append(
@@ -121,15 +125,16 @@ class Siren(nn.Module):
         batched_coords = self.flatten(coords)
         output = self.net(batched_coords)
         output = self.unflatten(output)
+        output = output * self.std + self.mean
         return output
         # return output
 
-    def forward_origianl(self, coords):
-        coords = (
-            coords.clone().detach().requires_grad_(True)
-        )  # allows to take derivative w.r.t. input
-        output = self.net(coords)
-        return output, coords
+    # def forward_origianl(self, coords):
+    #     coords = (
+    #         coords.clone().detach().requires_grad_(True)
+    #     )  # allows to take derivative w.r.t. input
+    #     output = self.net(coords)
+    #     return output, coords
 
     # def forward_with_activations(self, coords, retain_grad=False):
     #     """Returns not only model output, but also intermediate activations.
