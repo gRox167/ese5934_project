@@ -1,5 +1,8 @@
 import torch
 from einops import rearrange, repeat
+from fastmri import complex_abs, complex_abs_sq, complex_conj, complex_mul
+from fastmri import fft2c as fft2c
+from fastmri import ifft2c as ifft2c
 from torch import nn
 
 
@@ -12,7 +15,7 @@ class C(nn.Module):
         super().__init__()
 
     def forward(self, x, csm):
-        return x * csm
+        return complex_mul(x, csm)
 
 
 class C_adj(nn.Module):
@@ -24,7 +27,7 @@ class C_adj(nn.Module):
         super().__init__()
 
     def forward(self, x, csm):
-        return (x * csm.conj()).sum(dim=1)
+        return complex_mul(ifft2c(x), complex_conj(csm)).sum(dim=1, keepdim=True)
 
 
 class F(nn.Module):
@@ -36,12 +39,7 @@ class F(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        x = torch.fft.ifftshift(x, dim=(-2, -1))
-        x = torch.fft.fftn(x, dim=(-2, -1), norm="ortho")
-        # fftshift
-        x = torch.fft.fftshift(x, dim=(-2, -1))
-        # x = rearrange(x, 'b c h w -> b (h w) c')
-        return x
+        return fft2c(x, norm="ortho")
 
 
 class F_adj(nn.Module):
@@ -53,12 +51,7 @@ class F_adj(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        x = torch.fft.ifftshift(x, dim=(-2, -1))
-        x = torch.fft.ifftn(x, dim=(-2, -1), norm="ortho")
-        # fftshift
-        x = torch.fft.fftshift(x, dim=(-2, -1))
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=self.n, w=self.m)
-        return x
+        return ifft2c(x, norm="ortho")
 
 
 class M(nn.Module):
