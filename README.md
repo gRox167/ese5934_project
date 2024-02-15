@@ -1,4 +1,11 @@
 # ese5934_project
+
+
+## BART Installation
+To install BART, please refer to https://mrirecon.github.io/bart/ . 
+You download their release and then run `make` to compile the code. For redhat based system and mac os I have tested that it works. For windows, you may need to use WSL or other linux environment to compile the code.
+
+## Denpendency Installation
 Too install all the dependency, we recommend using `poetry` as dependency manager.
 ### Peotry Installation
 Run following code to install `poetry`
