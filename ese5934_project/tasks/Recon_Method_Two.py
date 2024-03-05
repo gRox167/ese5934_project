@@ -1,26 +1,13 @@
-from typing import Any
-
-import lightning.pytorch as pl
-import numpy as np
 import torch
-import torchopt
-from fastmri import complex_abs_sq
-from matplotlib import pyplot as plt
-from torch.func import functional_call, grad
-from torch.nn import functional as F
+import numpy as np
 
-from ese5934_project.models.GridField import Grid
-from ese5934_project.models.operators import ForwardModel, MaskedForwardModel
-
-
-def reconstruct(
+def reconstruct_cg_torchoptim(
     field,
     coordinates,
     kspace_masked,
     csm,
     mask,
     masked_forward_model=MaskedForwardModel(),
-    optimizer=torchopt.adam(0.1),
     iterations=500,
     device=torch.device("cpu"),
     params_init=None,
@@ -33,9 +20,7 @@ def reconstruct(
     mask = mask.to(device)
     masked_forward_model.to(device)
     params = dict(field.named_parameters()) if params_init is None else params_init
-    opt_state = optimizer.init(params)
 
-    # define functional loss
     def loss_fn(
         params,
         coordinates,
@@ -47,23 +32,33 @@ def reconstruct(
         image = functional_call(field, params, (coordinates,))
         kspace_hat = masked_forward_model(image, csm, mask)
         loss = complex_abs_sq(kspace_hat - kspace_masked).mean()
-        return loss, (loss, image, kspace_hat)
+        return loss
+
+    def closure():
+        optimizer.zero_grad()
+        loss = loss_fn(params, coordinates, kspace_masked, csm, mask)
+        loss.backward()
+        return loss
+
+    def compute_Hv(v):
+        optimizer.zero_grad()
+        loss = loss_fn(params, coordinates, kspace_masked, csm, mask)
+        grad_params = torch.autograd.grad(loss, params.values(), create_graph=True)
+        Hv = torch.autograd.grad(grad_params, params.values(), grad_outputs=v)
+        return Hv
+
+    optimizer = torch.optim.LBFGS(params.values(), lr=0.1, max_iter=20, max_eval=None, tolerance_grad=1e-5, tolerance_change=1e-9, history_size=100)
 
     image_show_list = []
     for t in range(1, iterations + 1):
-        grad_loss_fn = grad(loss_fn, has_aux=True)
-        grads, aux = grad_loss_fn(
-            params,
-            coordinates,
-            kspace_masked,
-            csm,
-            mask,
-        )
-        loss, image, kspace_hat = aux
-        print(f"iteration {t}, loss: {loss.item()}")
-        updates, opt_state = optimizer.update(grads, opt_state, params=params)
-        params = torchopt.apply_updates(params, updates)
-        params = {k: v.detach() for k, v in params.items()}  # detach params
+        def closure():
+            optimizer.zero_grad()
+            loss = loss_fn(params, coordinates, kspace_masked, csm, mask)
+            loss.backward()
+            return loss
+
+        optimizer.step(closure)
+
         # check for results
         if t % 50 == 0:
             print(f"iteration {t}")
