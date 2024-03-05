@@ -16,7 +16,7 @@ from ese5934_project.models.operators import ForwardModel, MaskedForwardModel
 
 ############################
 
-'''def conjugate_gradient_reconstruct(A_fn, b, x0, iterations, tolerance=1e-10, checkpoint_interval=50):
+def conjugate_gradient_reconstruct(A_fn, b, x0, iterations, tolerance=1e-10, checkpoint_interval=50):
     x = x0.clone()
     r = b - A_fn(x)
     d = r.clone()
@@ -90,12 +90,12 @@ def reconstruct_cg(
         checkpoint_interval=checkpoint_interval
     )
     
-    return reconstructed_image, image_show_list'''
+    return reconstructed_image, image_show_list
 
 
 
 ################################################################################
-def conjugate_gradient_reconstruct(A_fn, b, x0, iterations, tolerance=1e-10, checkpoint_interval=50):
+'''def conjugate_gradient_reconstruct(A_fn, b, x0, iterations, tolerance=1e-10, checkpoint_interval=50):
     x = x0.clone()
     r = -b + A_fn(x)
     d = -(r.clone())
@@ -169,7 +169,7 @@ def reconstruct_cg(
         checkpoint_interval=checkpoint_interval
     )
     
-    return reconstructed_image, image_show_list
+    return reconstructed_image, image_show_list'''
 
 
 
