@@ -213,13 +213,14 @@ class DictField(torch.nn.Module):
 
         self.matMode = [[0, 1], [0, 2], [1, 2]]
         self.vecMode = [2, 1, 0]
-        self.n_scene, self.scene_idx = 1, 0
+        #self.n_scene, self.scene_idx = 1, 0
 
         self.alphaMask = None
         self.coeff_type, self.basis_type = cfg.model.coeff_type, cfg.model.basis_type
 
         self.aabb = [[0., 0.], [640, 368]]
-        #self.setup_params(aabb)
+        self.setup_params(self.aabb)
+
         if self.cfg.model.coeff_type != 'none':
             self.coeffs = self.init_coef()
 
@@ -276,15 +277,15 @@ class DictField(torch.nn.Module):
 
         self.aabb = torch.FloatTensor(aabb).to(self.device)
         self.coeff_reso = N_to_reso(self.T_coeff // sum(self.basis_dims), self.aabb[:, :self.in_dim])[::-1]  # DHW
-
-        self.coeff_reso = [aabb[1][-1]] + self.coeff_reso
+        
+        #self.coeff_reso = [aabb[1][-1]] + self.coeff_reso
+       
      
 
     def init_coef(self):
-        coeffs = [
-                self.cfg.model.coef_init * torch.ones((1, sum(self.basis_dims), *self.coeff_reso), device=self.device)
-                ] # size([1,sum([32,32,32,16,16,16]), H/4, W/4])
-        coeffs = torch.nn.ParameterList(coeffs)
+        coeffs = self.cfg.model.coef_init * torch.ones((1, sum(self.basis_dims), *self.coeff_reso), device=self.device)
+                 # size([1,sum([32,32,32,16,16,16]), H/4, W/4])
+        #coeffs = torch.nn.ParameterList(coeffs)
         return coeffs
 
     def init_basis(self):
@@ -300,8 +301,7 @@ class DictField(torch.nn.Module):
     def get_coeff(self, xyz_sampled):
         N_points, dim = xyz_sampled.shape
         pts = self.normalize_coord(xyz_sampled).view([1, -1] + [1] * (dim - 1) + [dim])
-        print(self.coeffs[self.scene_idx].size())
-        coeffs = F.grid_sample(self.coeffs[self.scene_idx], pts, mode=self.cfg.model.coef_mode, align_corners=False,
+        coeffs = F.grid_sample(self.coeffs, pts, mode=self.cfg.model.coef_mode, align_corners=False,
                                    padding_mode='border').view(-1, N_points).t()
         return coeffs
 
@@ -377,7 +377,9 @@ class DictField(torch.nn.Module):
 
     def forward(self, coordinates):
         feats, coeffs = self.get_coding(coordinates)
-        return self.linear_mat(feats)
+        
+        output = self.linear_mat(feats).reshape(*[640, 368],2)
+        return output
  
     def normalize_coord(self, xyz_sampled):
         invaabbSize = 2.0 / (self.aabb[1] - self.aabb[0])
@@ -389,6 +391,8 @@ class DictField(torch.nn.Module):
         elif self.cfg.renderer.fea2denseAct == "relu":
             return F.relu(density_features + self.cfg.renderer.density_shift)
 
+    
+    """
     @torch.no_grad()
     def cal_mean_coef(self, state_dict):
         if 'grid' in self.coeff_type or 'mlp' in self.coeff_type:
@@ -412,6 +416,7 @@ class DictField(torch.nn.Module):
                 state_dict[f'coeffs.{i}'] = torch.mean(state_dict[f'coeffs.{i}'], dim=-1, keepdim=True)
 
         return state_dict
+        """
 
     def save(self, path):
         ckpt = {'state_dict': self.state_dict(), 'cfg': self.cfg}
@@ -436,3 +441,12 @@ class DictField(torch.nn.Module):
         self.load_state_dict(ckpt['state_dict'])
         volumeSize = N_to_reso(self.cfg.training.volume_resoFinal ** self.in_dim, self.aabb)
         self.update_renderParams(volumeSize)
+
+def get_coordinates(size):
+
+    H,W = size[0], size[1]
+    y,x = torch.meshgrid(torch.arange(0, H), torch.arange(0, W), indexing='ij')
+    coordinate = torch.stack((x,y),-1).float()+0.5 
+    coordinate = coordinate.reshape(-1,2)
+
+    return coordinate
