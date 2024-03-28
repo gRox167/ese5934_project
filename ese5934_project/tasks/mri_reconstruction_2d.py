@@ -20,6 +20,7 @@ def reconstruct(
     csm,
     mask,
     masked_forward_model=MaskedForwardModel(),
+    alpha=0.1,
     optimizer=torchopt.adam(0.1),
     iterations=500,
     device=torch.device("cpu"),
@@ -46,8 +47,13 @@ def reconstruct(
     ):
         image = functional_call(field, params, (coordinates,))
         kspace_hat = masked_forward_model(image, csm, mask)
-        loss = complex_abs_sq(kspace_hat - kspace_masked).mean()
-        return loss, (loss, image, kspace_hat)
+        data_consistency_loss = complex_abs_sq(kspace_hat - kspace_masked).mean()
+        total_variation_loss = alpha * (
+            F.l1_loss(image[:, 1:, :], image[:, :-1, :])
+            + F.l1_loss(image[:, :, 1:], image[:, :, :-1])
+        )
+        loss = data_consistency_loss + total_variation_loss
+        return loss, (data_consistency_loss, total_variation_loss, image, kspace_hat)
 
     image_show_list = []
     for t in range(1, iterations + 1):
@@ -59,8 +65,8 @@ def reconstruct(
             csm,
             mask,
         )
-        loss, image, kspace_hat = aux
-        print(f"iteration {t}, loss: {loss.item()}")
+        dc_loss, tv_loss, image, kspace_hat = aux
+        print(f"iteration {t}, dc_loss: {dc_loss.item()}, tv_loss: {tv_loss.item()}")
         updates, opt_state = optimizer.update(grads, opt_state, params=params)
         params = torchopt.apply_updates(params, updates)
         params = {k: v.detach() for k, v in params.items()}  # detach params
