@@ -27,7 +27,7 @@ class C_adj(nn.Module):
         super().__init__()
 
     def forward(self, x, csm):
-        return complex_mul(ifft2c(x), complex_conj(csm)).sum(dim=1, keepdim=True)
+        return complex_mul(x, complex_conj(csm)).sum(dim=0, keepdim=True)
 
 
 class F(nn.Module):
