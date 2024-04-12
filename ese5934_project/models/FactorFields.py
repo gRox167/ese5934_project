@@ -13,31 +13,74 @@ from utils import N_to_reso, N_to_vm_reso
 # import BasisCoding
 
 
-def grid_mapping(positions, freq_bands, aabb, basis_mapping="sawtooth"):
-    aabbSize = max(aabb[1] - aabb[0])
-    scale = aabbSize[..., None] / freq_bands
-    if basis_mapping == "triangle":
-        pts_local = (positions - aabb[0]).unsqueeze(-1) % scale
-        pts_local_int = ((positions - aabb[0]).unsqueeze(-1) // scale) % 2
-        pts_local = pts_local / (scale / 2) - 1
-        pts_local = torch.where(pts_local_int == 1, -pts_local, pts_local)
-    elif basis_mapping == "sawtooth":
-        pts_local = (positions - aabb[0])[..., None] % scale
-        pts_local = pts_local / (scale / 2) - 1
-        pts_local = pts_local.clamp(-1.0, 1.0)
-    elif basis_mapping == "sinc":
-        pts_local = torch.sin(
-            (positions - aabb[0])[..., None] / (scale / np.pi) - np.pi / 2
-        )
-    elif basis_mapping == "trigonometric":
-        pts_local = (positions - aabb[0])[..., None] / scale * 2 * np.pi
-        pts_local = torch.cat((torch.sin(pts_local), torch.cos(pts_local)), dim=-1)
-    elif basis_mapping == "x":
-        pts_local = (positions - aabb[0]).unsqueeze(-1) / scale
+def grid_mapping(positions, freq_bands, bbox, basis_mapping="sawtooth"):
+    # ic(bbox)
+    # ic(positions.shape)
+    aabbSize = torch.max(bbox[1] - bbox[0])
+    # ic(aabbSize.shape, freq_bands.shape)
+    scale = aabbSize / freq_bands
+    # if basis_mapping == "triangle":
+    #     pts_local = (positions - bbox[0]).unsqueeze(-1) % scale
+    #     pts_local_int = ((positions - bbox[0]).unsqueeze(-1) // scale) % 2
+    #     pts_local = pts_local / (scale / 2) - 1
+    #     pts_local = torch.where(pts_local_int == 1, -pts_local, pts_local)
+    # elif basis_mapping == "sawtooth":
+    # ic(scale, bbox[0], positions[1:2])
+    pts_local = (positions - bbox[0])[..., None] % scale
+    pts_local = pts_local / (scale / 2) - 1
+    pts_local = pts_local.clamp(-1.0, 1.0)
+    # elif basis_mapping == "sinc":
+    #     pts_local = torch.sin(
+    #         (positions - bbox[0])[..., None] / (scale / np.pi) - np.pi / 2
+    #     )
+    # elif basis_mapping == "trigonometric":
+    #     pts_local = (positions - bbox[0])[..., None] / scale * 2 * np.pi
+    #     pts_local = torch.cat((torch.sin(pts_local), torch.cos(pts_local)), dim=-1)
+    # elif basis_mapping == "x":
+    #     pts_local = (positions - bbox[0]).unsqueeze(-1) / scale
     # elif basis_mapping=='hash':
-    #     pts_local = (positions - aabb[0])/max(aabbSize)
+    #     pts_local = (positions - bbox[0])/max(aabbSize)
 
     return pts_local
+
+
+def dct_dict(n_atoms_fre, size, n_selete, dim=2):
+    """
+    Create a dictionary using the Discrete Cosine Transform (DCT) basis. If n_atoms is
+    not a perfect square, the returned dictionary will have ceil(sqrt(n_atoms))**2 atoms
+    :param n_atoms:
+        Number of atoms in dict
+    :param size:
+        Size of first patch dim
+    :return:
+        DCT dictionary, shape (size*size, ceil(sqrt(n_atoms))**2)
+    """
+    # todo flip arguments to match random_dictionary
+    p = n_atoms_fre  # int(math.ceil(math.sqrt(n_atoms)))
+    dct = np.zeros((p, size))
+
+    for k in range(p):
+        basis = np.cos(np.arange(size) * k * math.pi / p)
+        if k > 0:
+            basis = basis - np.mean(basis)
+
+        dct[k] = basis
+
+    kron = np.kron(dct, dct)
+    if 3 == dim:
+        kron = np.kron(kron, dct)
+
+    if n_selete < kron.shape[0]:
+        idx = [x[0] for x in np.array_split(np.arange(kron.shape[0]), n_selete)]
+        kron = kron[idx]
+
+    for col in range(kron.shape[0]):
+        norm = np.linalg.norm(kron[col]) or 1
+        kron[col] /= norm
+
+    kron = torch.FloatTensor(kron)
+    # print(kron.shape)
+    return kron
 
 
 def dct_dict(n_atoms_fre, size, n_selete, dim=2):
@@ -172,12 +215,11 @@ class MLPMixer(torch.nn.Module):
 
 
 class MLPRender_Fea(torch.nn.Module):
-    def __init__(self, inChanel, num_layers=3, hidden_dim=64, viewpe=6, feape=2):
-        super(MLPRender_Fea, self).__init__()
+    def __init__(self, inChanel, num_layers=3, hidden_dim=64, feape=2):
+        super().__init__()
 
-        self.in_mlpC = 3 + inChanel + 2 * viewpe * 3 + 2 * feape * inChanel
+        self.in_mlpC = 3 + inChanel + 2 * feape * inChanel
         self.num_layers = num_layers
-        self.viewpe = viewpe
         self.feape = feape
 
         mlp = []
@@ -197,13 +239,12 @@ class MLPRender_Fea(torch.nn.Module):
         self.mlp = torch.nn.ModuleList(mlp)
         # torch.nn.init.constant_(self.mlp[-1].bias, 0)
 
-    def forward(self, viewdirs, features):
-        indata = [features, viewdirs]
+    def forward(self, features):
+        indata = [features]
         if self.feape > 0:
             indata += [positional_encoding(features, self.feape)]
-        if self.viewpe > 0:
-            indata += [positional_encoding(viewdirs, self.viewpe)]
-
+        # if self.viewpe > 0:
+        #     indata += [positional_encoding(viewdirs, self.viewpe)]
         h = torch.cat(indata, dim=-1)
         for l in range(self.num_layers):
             h = self.mlp[l](h)
@@ -215,12 +256,12 @@ class MLPRender_Fea(torch.nn.Module):
 
 
 class DictField(torch.nn.Module):
-    def __init__(self, cfg, device):
+    def __init__(self, cfg, im_size, device):
         super().__init__()
 
         self.cfg = cfg
         self.device = device
-
+        self.im_size = im_size
         # self.matMode = [[0, 1], [0, 2], [1, 2]]
         # self.vecMode = [2, 1, 0]
         # self.n_scene, self.scene_idx = 1, 0
@@ -228,8 +269,8 @@ class DictField(torch.nn.Module):
         # self.alphaMask = None
         self.coeff_type, self.basis_type = cfg.model.coeff_type, cfg.model.basis_type
 
-        self.aabb = [[0.0, 0.0], [640, 368]]
-        self.setup_params(self.aabb)
+        self.bbox = [[0.0, 0.0], list(im_size)]
+        self.setup_params(self.bbox)
 
         if self.cfg.model.coeff_type != "none":
             self.coeffs = self.init_coef()
@@ -238,13 +279,6 @@ class DictField(torch.nn.Module):
             self.basises = self.init_basis()
 
         out_dim = cfg.model.out_dim
-        # if 'vm' in self.coeff_type:
-        #     in_dim = sum(cfg.model.basis_dims) * 3
-        # elif 'x' in self.cfg.model.basis_type:
-        #     in_dim = len(
-        #         cfg.model.basis_dims) * 2 * self.in_dim if self.cfg.model.basis_mapping == 'trigonometric' else len(
-        #         cfg.model.basis_dims) * self.in_dim
-        # else:
         in_dim = sum(cfg.model.basis_dims)
         self.linear_mat = MLPMixer(
             in_dim,
@@ -282,41 +316,53 @@ class DictField(torch.nn.Module):
         # self.in_dim = len(aabb[0]) - 1
         self.in_dim = 2
 
-        self.basis_dims = self.cfg.model.basis_dims  # [32,32,32,16,16,16]
-        self.basis_reso = self.cfg.model.basis_resos  # [32,51,70,89,108,128]
-        self.T_basis = sum(
-            np.power(np.array(self.basis_reso), self.in_dim)
-            * np.array(self.cfg.model.basis_dims)
+        self.basis_dims = np.array(self.cfg.model.basis_dims)  # [32,32,32,16,16,16]
+        self.basis_reso = np.array(self.cfg.model.basis_resos)  # [32,51,70,89,108,128]
+        self.basis_reso_y = np.round(
+            self.basis_reso / self.im_size[0] * self.im_size[1]
         )
-        self.T_coeff = ic(self.cfg.model.total_params) - ic(self.T_basis)
-        self.T_coeff: int = 8**self.in_dim * sum(
-            self.basis_dims
-        )  # each coeff parametrizes a 8x8 block of original image
+        ic(self.basis_dims)
+        ic(self.basis_reso)
+        ic(self.basis_reso_y)
+        # self.T_basis = sum(
+        #     np.power(np.array(self.basis_reso), self.in_dim)
+        #     * np.array(self.cfg.model.basis_dims)
+        # )
+        # self.T_coeff = ic(self.cfg.model.total_params) - ic(self.T_basis)
+        # self.T_coeff: int = 8**self.in_dim * sum(
+        #     self.basis_dims
+        # )  # each coeff parametrizes a 8x8 block of original image
 
-        self.freq_bands = ic(
-            max(bbox[1]) / torch.FloatTensor(self.basis_reso).to(self.device)
+        self.freq_bands = max(bbox[1]) / torch.FloatTensor(self.basis_reso).to(
+            self.device
         )
+        ic(self.freq_bands)
 
-        self.bbox = ic(torch.FloatTensor(bbox).to(self.device))
-        self.coeff_reso = N_to_reso(self.T_coeff // sum(self.basis_dims), self.bbox)[
-            ::-1
-        ]  # DHW
+        self.bbox = torch.FloatTensor(bbox).to(self.device)
+        ic(self.bbox)
+        self.coeff_reso = [
+            round(self.im_size[0] / (8**self.in_dim) + 1),
+            round(self.im_size[1] / (8**self.in_dim) + 1),
+        ]
+
+        # self.coeff_reso = N_to_reso(self.T_coeff // sum(self.basis_dims), self.bbox)
+        # ::-1
+        # ]  # DHW
         ic(self.coeff_reso)
-
-        # self.coeff_reso = [aabb[1][-1]] + self.coeff_reso
 
     def init_coef(self):
         coeffs = self.cfg.model.coef_init * torch.ones(
             (1, sum(self.basis_dims), *self.coeff_reso), device=self.device
         )
         # size([1,sum([32,32,32,16,16,16]), H/4, W/4])
-        # coeffs = torch.nn.ParameterList(coeffs)
-        return coeffs
+        # return torch.nn.ParameterList(coeffs)
+        ic(coeffs.shape)
+        return torch.nn.Parameter(coeffs)
 
     def init_basis(self):
         basises = []
         for i, (basis_dim, reso) in enumerate(zip(self.basis_dims, self.basis_reso)):
-            # print([1, basis_dim] + [reso] * self.in_dim)
+            ic([1, basis_dim] + [reso] * self.in_dim)
             basises.append(
                 torch.nn.Parameter(
                     dct_dict(
@@ -349,15 +395,17 @@ class DictField(torch.nn.Module):
         return coeffs
 
     def get_basis(self, x):
+        # ic(x.shape)
         N_points = x.shape[0]
-        x = x[..., :-1]
+        # x = x[..., :-1]
         freq_len = len(self.freq_bands)
         xyz = grid_mapping(
             x,
             self.freq_bands,
-            self.aabb[:, : self.in_dim],
+            self.bbox,
             self.cfg.model.basis_mapping,
         ).view(1, *([1] * (self.in_dim - 1)), -1, self.in_dim, freq_len)
+        # ic(xyz.shape)
         basises = []
         for i in range(freq_len):
             basises.append(
@@ -435,7 +483,7 @@ class DictField(torch.nn.Module):
 
     def forward(self, coordinates):
         feats, coeffs = self.get_coding(coordinates)
-
+        # ic(feats.shape)
         output = self.linear_mat(feats).reshape(*[640, 368], 2)
         return output
 

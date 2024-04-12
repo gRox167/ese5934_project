@@ -8,7 +8,8 @@ defaults:
 
 model:
   basis_dims: [32,32,32,16,16,16]
-  basis_resos:  [32,51,70,89,108,128]
+  # basis_resos:  [64,101,140,179,217,259]
+  basis_resos: [32,51,70,89,108,128]
   freq_bands: [2. , 3.2, 4.4, 5.6, 6.8, 8.]
   
   

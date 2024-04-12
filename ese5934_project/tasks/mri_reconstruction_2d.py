@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torchopt
 from fastmri import complex_abs_sq
+from icecream import ic
 from matplotlib import pyplot as plt
 from torch.func import functional_call, grad
 from torch.nn import functional as F
@@ -34,6 +35,7 @@ def reconstruct(
     mask = mask.to(device)
     masked_forward_model.to(device)
     params = dict(field.named_parameters()) if params_init is None else params_init
+    ic(params.keys())
     opt_state = optimizer.init(params)
 
     # define functionanl loss
