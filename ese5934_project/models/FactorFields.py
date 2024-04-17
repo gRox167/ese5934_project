@@ -10,15 +10,14 @@ from icecream import ic
 
 from utils import N_to_reso, N_to_vm_reso
 
-# import BasisCoding
-
 
 def grid_mapping(positions, freq_bands, bbox, basis_mapping="sawtooth"):
     # ic(bbox)
     # ic(positions.shape)
-    aabbSize = torch.max(bbox[1] - bbox[0])
+    bbox_size = torch.max(bbox[1] - bbox[0])
     # ic(aabbSize.shape, freq_bands.shape)
-    scale = aabbSize / freq_bands
+    scale = bbox_size / freq_bands
+    # ic(scale)
     # if basis_mapping == "triangle":
     #     pts_local = (positions - bbox[0]).unsqueeze(-1) % scale
     #     pts_local_int = ((positions - bbox[0]).unsqueeze(-1) // scale) % 2
@@ -83,45 +82,6 @@ def dct_dict(n_atoms_fre, size, n_selete, dim=2):
     return kron
 
 
-def dct_dict(n_atoms_fre, size, n_selete, dim=2):
-    """
-    Create a dictionary using the Discrete Cosine Transform (DCT) basis. If n_atoms is
-    not a perfect square, the returned dictionary will have ceil(sqrt(n_atoms))**2 atoms
-    :param n_atoms:
-        Number of atoms in dict
-    :param size:
-        Size of first patch dim
-    :return:
-        DCT dictionary, shape (size*size, ceil(sqrt(n_atoms))**2)
-    """
-    # todo flip arguments to match random_dictionary
-    p = n_atoms_fre  # int(math.ceil(math.sqrt(n_atoms)))
-    dct = np.zeros((p, size))
-
-    for k in range(p):
-        basis = np.cos(np.arange(size) * k * math.pi / p)
-        if k > 0:
-            basis = basis - np.mean(basis)
-
-        dct[k] = basis
-
-    kron = np.kron(dct, dct)
-    if 3 == dim:
-        kron = np.kron(kron, dct)
-
-    if n_selete < kron.shape[0]:
-        idx = [x[0] for x in np.array_split(np.arange(kron.shape[0]), n_selete)]
-        kron = kron[idx]
-
-    for col in range(kron.shape[0]):
-        norm = np.linalg.norm(kron[col]) or 1
-        kron[col] /= norm
-
-    kron = torch.FloatTensor(kron)
-    # print(kron.shape)
-    return kron
-
-
 def positional_encoding(positions, freqs):
     freq_bands = (2 ** torch.arange(freqs).float()).to(positions.device)  # (F,)
     pts = (positions[..., None] * freq_bands).reshape(
@@ -129,42 +89,6 @@ def positional_encoding(positions, freqs):
     )  # (..., DF)
     pts = torch.cat([torch.sin(pts), torch.cos(pts)], dim=-1)
     return pts
-
-
-def raw2alpha(sigma, dist):
-    # sigma, dist  [N_rays, N_samples]
-    alpha = 1.0 - torch.exp(-sigma * dist)
-
-    T = torch.cumprod(
-        torch.cat([torch.ones_like(alpha[..., :1]), 1.0 - alpha + 1e-10], -1), -1
-    )
-    weights = alpha * T[..., :-1]  # [N_rays, N_samples]
-    return alpha, weights, T[..., -1:]
-
-
-class AlphaGridMask(torch.nn.Module):
-    def __init__(self, device, aabb, alpha_volume):
-        super(AlphaGridMask, self).__init__()
-        self.device = device
-
-        self.aabb = aabb.to(self.device)
-        self.aabbSize = self.aabb[1] - self.aabb[0]
-        self.invgridSize = 1.0 / self.aabbSize * 2
-        self.alpha_volume = alpha_volume.view(1, 1, *alpha_volume.shape[-3:])
-        self.gridSize = torch.LongTensor(
-            [alpha_volume.shape[-1], alpha_volume.shape[-2], alpha_volume.shape[-3]]
-        ).to(self.device)
-
-    def sample_alpha(self, xyz_sampled):
-        xyz_sampled = self.normalize_coord(xyz_sampled)
-        alpha_vals = F.grid_sample(
-            self.alpha_volume, xyz_sampled.view(1, -1, 1, 1, 3), align_corners=True
-        ).view(-1)
-
-        return alpha_vals
-
-    def normalize_coord(self, xyz_sampled):
-        return (xyz_sampled - self.aabb[0]) * self.invgridSize - 1
 
 
 class MLPMixer(torch.nn.Module):
@@ -212,47 +136,6 @@ class MLPMixer(torch.nn.Module):
                 # h = torch.sin(h)
         # sigma, feat = h[...,0], h[...,1:]
         return h
-
-
-class MLPRender_Fea(torch.nn.Module):
-    def __init__(self, inChanel, num_layers=3, hidden_dim=64, feape=2):
-        super().__init__()
-
-        self.in_mlpC = 3 + inChanel + 2 * feape * inChanel
-        self.num_layers = num_layers
-        self.feape = feape
-
-        mlp = []
-        for l in range(num_layers):
-            if l == 0:
-                in_dim = self.in_mlpC
-            else:
-                in_dim = hidden_dim
-
-            if l == num_layers - 1:
-                out_dim, bias = 3, False  # 3 rgb
-            else:
-                out_dim, bias = hidden_dim, True
-
-            mlp.append(torch.nn.Linear(in_dim, out_dim, bias=bias))
-
-        self.mlp = torch.nn.ModuleList(mlp)
-        # torch.nn.init.constant_(self.mlp[-1].bias, 0)
-
-    def forward(self, features):
-        indata = [features]
-        if self.feape > 0:
-            indata += [positional_encoding(features, self.feape)]
-        # if self.viewpe > 0:
-        #     indata += [positional_encoding(viewdirs, self.viewpe)]
-        h = torch.cat(indata, dim=-1)
-        for l in range(self.num_layers):
-            h = self.mlp[l](h)
-            if l != self.num_layers - 1:
-                h = F.relu(h, inplace=True)
-
-        rgb = torch.sigmoid(h)
-        return rgb
 
 
 class DictField(torch.nn.Module):
@@ -318,20 +201,12 @@ class DictField(torch.nn.Module):
 
         self.basis_dims = np.array(self.cfg.model.basis_dims)  # [32,32,32,16,16,16]
         self.basis_reso = np.array(self.cfg.model.basis_resos)  # [32,51,70,89,108,128]
-        self.basis_reso_y = np.round(
-            self.basis_reso / self.im_size[0] * self.im_size[1]
-        )
+        # self.basis_reso_y = np.round(
+        #     self.basis_reso / self.im_size[0] * self.im_size[1]
+        # )
         ic(self.basis_dims)
         ic(self.basis_reso)
-        ic(self.basis_reso_y)
-        # self.T_basis = sum(
-        #     np.power(np.array(self.basis_reso), self.in_dim)
-        #     * np.array(self.cfg.model.basis_dims)
-        # )
-        # self.T_coeff = ic(self.cfg.model.total_params) - ic(self.T_basis)
-        # self.T_coeff: int = 8**self.in_dim * sum(
-        #     self.basis_dims
-        # )  # each coeff parametrizes a 8x8 block of original image
+        # ic(self.basis_reso_y)
 
         self.freq_bands = max(bbox[1]) / torch.FloatTensor(self.basis_reso).to(
             self.device
@@ -340,10 +215,15 @@ class DictField(torch.nn.Module):
 
         self.bbox = torch.FloatTensor(bbox).to(self.device)
         ic(self.bbox)
-        self.coeff_reso = [
-            round(self.im_size[0] / (8**self.in_dim) + 1),
-            round(self.im_size[1] / (8**self.in_dim) + 1),
-        ]
+        # self.coeff_reso = [
+        #     round(self.im_size[0] / (8**self.in_dim) + 1),
+        #     round(self.im_size[1] / (8**self.in_dim) + 1),
+        # ]
+        # self.coeff_reso = [
+        #     round(self.im_size[0] / (8**self.in_dim)),
+        #     round(self.im_size[1] / (8**self.in_dim)),
+        # ]
+        self.coeff_reso = [20, 12]
 
         # self.coeff_reso = N_to_reso(self.T_coeff // sum(self.basis_dims), self.bbox)
         # ::-1
@@ -381,13 +261,16 @@ class DictField(torch.nn.Module):
     def get_coeff(self, xyz_sampled):
         N_points, dim = xyz_sampled.shape
         pts = self.normalize_coord(xyz_sampled).view([1, -1] + [1] * (dim - 1) + [dim])
+        # normalize to -1, 1
         coeffs = (
             F.grid_sample(
                 self.coeffs,
                 pts,
                 mode=self.cfg.model.coef_mode,
                 align_corners=False,
+                # align_corners=True,
                 padding_mode="border",
+                # padding_mode="zeros",
             )
             .view(-1, N_points)
             .t()
@@ -398,6 +281,7 @@ class DictField(torch.nn.Module):
         # ic(x.shape)
         N_points = x.shape[0]
         # x = x[..., :-1]
+        # ic(self.freq_bands)
         freq_len = len(self.freq_bands)
         xyz = grid_mapping(
             x,
@@ -472,8 +356,6 @@ class DictField(torch.nn.Module):
                     item.requires_grad = statue
             elif item == "proj":
                 self.linear_mat.requires_grad = statue
-            elif item == "renderer":
-                self.renderModule.requires_grad = statue
 
     def TV_loss(self, reg):
         total = 0
@@ -559,7 +441,7 @@ class DictField(torch.nn.Module):
 def get_coordinates(size):
     H, W = size[0], size[1]
     y, x = torch.meshgrid(torch.arange(0, H), torch.arange(0, W), indexing="ij")
-    coordinate = torch.stack((x, y), -1).float() + 0.5
+    coordinate = torch.stack((y, x), -1).float() + 0.5
     coordinate = coordinate.reshape(-1, 2)
 
     return coordinate

@@ -73,7 +73,6 @@ def reconstruct(
         params = torchopt.apply_updates(params, updates)
         params = {k: v.detach() for k, v in params.items()}  # detach params
         # check for results
-        if t % 50 == 0:
-            print(f"iteration {t}")
+        if t % 2 == 0:
             image_show_list.append(image.detach().cpu())
     return params, image_show_list
