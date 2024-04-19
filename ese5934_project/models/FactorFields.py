@@ -223,7 +223,7 @@ class DictField(torch.nn.Module):
         #     round(self.im_size[0] / (8**self.in_dim)),
         #     round(self.im_size[1] / (8**self.in_dim)),
         # ]
-        self.coeff_reso = [20, 12]
+        self.coeff_reso = self.cfg.model.coeff_reso
 
         # self.coeff_reso = N_to_reso(self.T_coeff // sum(self.basis_dims), self.bbox)
         # ::-1
