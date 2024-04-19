@@ -11,7 +11,7 @@ defaults:
 
 model:
   basis_dims: [4,4,4,2,2,2]
-  basis_resos: [32,51,70,89,108,128]
+  # basis_resos: [32,51,70,89,108,128]
   coeff_reso: 32
   total_params: 10744166
   T_basis: 0

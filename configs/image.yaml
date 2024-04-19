@@ -8,18 +8,18 @@ defaults:
 
 model:
   basis_dims: [32,32,32,16,16,16]
-  basis_resos:  [32,51,70,89,108,128]
-  freq_bands: [2. , 3.2, 4.4, 5.6, 6.8, 8.]
-  
-  
-  coeff_reso: 32
-  total_params: 1024000 
+  # basis_resos: [32,51,70,89,108,128]
+  # basis_resos: [16,26,35,45,54,64]
+  basis_resos: [8,13,19,23,27,32]
+  # freq_bands: [2. , 3.2, 4.4, 5.6, 6.8, 8.]
+  # freq_bands: [4. , 6.4, 8.8, 11.2, 13.6, 16.]
+  # freq_bands: [8. , 12.8, 17.6, 22.4, 27.2, 32.]
+  coeff_reso: [20, 12]
   
   coef_init: 0.001
 
   coef_mode: bilinear
   basis_mode: bilinear
-
 
   coeff_type: 'grid'
   basis_type: 'grid'
