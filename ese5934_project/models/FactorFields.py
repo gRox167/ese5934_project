@@ -211,23 +211,10 @@ class DictField(torch.nn.Module):
         self.freq_bands = max(bbox[1]) / torch.FloatTensor(self.basis_reso).to(
             self.device
         )
-        ic(self.freq_bands)
 
         self.bbox = torch.FloatTensor(bbox).to(self.device)
         ic(self.bbox)
-        # self.coeff_reso = [
-        #     round(self.im_size[0] / (8**self.in_dim) + 1),
-        #     round(self.im_size[1] / (8**self.in_dim) + 1),
-        # ]
-        # self.coeff_reso = [
-        #     round(self.im_size[0] / (8**self.in_dim)),
-        #     round(self.im_size[1] / (8**self.in_dim)),
-        # ]
         self.coeff_reso = self.cfg.model.coeff_reso
-
-        # self.coeff_reso = N_to_reso(self.T_coeff // sum(self.basis_dims), self.bbox)
-        # ::-1
-        # ]  # DHW
         ic(self.coeff_reso)
 
     def init_coef(self):
